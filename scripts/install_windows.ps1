@@ -530,6 +530,66 @@ function Find-Custom3PValidationToggle {
     return $null
 }
 
+function Find-Custom3PNameValidator {
+    param(
+        [byte[]]$Content,
+        [bool]$Patched
+    )
+
+    $contentText = [System.Text.Encoding]::ASCII.GetString($Content)
+    $pattern = 'function ([A-Za-z_$][A-Za-z0-9_$]*)\(([A-Za-z_$][A-Za-z0-9_$]*)\)\{const ([A-Za-z_$][A-Za-z0-9_$]*)=\2\.toLowerCase\(\);return ([^{};]+)\}'
+    $validMatches = New-Object System.Collections.Generic.List[object]
+
+    foreach ($match in [regex]::Matches($contentText, $pattern)) {
+        $windowStart = [Math]::Max(0, $match.Index - 1500)
+        $windowLength = [Math]::Min(3000 + ($match.Index - $windowStart), $contentText.Length - $windowStart)
+        $validationWindow = $contentText.Substring($windowStart, $windowLength)
+        if (
+            $validationWindow.Contains('deepseek') -and
+            $validationWindow.Contains('expected a gateway model route referencing an Anthropic model')
+        ) {
+            $expr = $match.Groups[4].Value.Trim()
+            if ($Patched -and ($expr -eq '!0')) {
+                $validMatches.Add($match)
+            }
+            elseif (
+                (-not $Patched) -and
+                $match.Groups[4].Value.Contains('.test(') -and
+                $match.Groups[4].Value.Contains('.some(') -and
+                $match.Groups[4].Value.Contains('.includes(')
+            ) {
+                $validMatches.Add($match)
+            }
+        }
+    }
+
+    if ($validMatches.Count -gt 1) {
+        throw "Could not patch custom 3P model validation: multiple matching validators found."
+    }
+    if ($validMatches.Count -eq 1) {
+        return $validMatches[0]
+    }
+    return $null
+}
+
+function Patch-Custom3PNameValidator {
+    param([byte[]]$Content)
+
+    $match = Find-Custom3PNameValidator $Content $false
+    if ($null -eq $match) {
+        return $false
+    }
+
+    $expr = $match.Groups[4].Value
+    $replacementText = '!0' + (' ' * ($expr.Length - 2))
+    $replacement = [System.Text.Encoding]::ASCII.GetBytes($replacementText)
+    if ($replacement.Length -ne $expr.Length) {
+        throw "Internal patch error: custom 3P validator replacement changed length."
+    }
+    [System.Array]::Copy($replacement, 0, $Content, $match.Groups[4].Index, $replacement.Length)
+    return $true
+}
+
 function Get-Sha256Hex {
     param([byte[]]$Bytes)
 
@@ -1051,20 +1111,30 @@ function Patch-Custom3PModelValidation {
             Sync-ClaudeExeAsarIntegrity $ResourcesPath
             return
         }
-        throw "Could not patch custom 3P model validation. Claude bundle format may have changed."
+        $patchedNameValidator = Find-Custom3PNameValidator $content $true
+        if ($null -ne $patchedNameValidator) {
+            Write-Host "  custom 3P model-name validation already patched" -ForegroundColor Green
+            Sync-ClaudeExeAsarIntegrity $ResourcesPath
+            return
+        }
+        if (-not (Patch-Custom3PNameValidator $content)) {
+            throw "Could not patch custom 3P model validation. Claude bundle format may have changed."
+        }
+    }
+    else {
+        $anchorText = $match.Value
+        $patchedAnchorText = 'const ' + $match.Groups[1].Value + '=' + $newExprText + '||!1,' + $match.Groups[2].Value + '='
+        $anchor = [System.Text.Encoding]::ASCII.GetBytes($anchorText)
+        $patchedAnchor = [System.Text.Encoding]::ASCII.GetBytes($patchedAnchorText)
+        if ($anchor.Length -ne $patchedAnchor.Length) {
+            throw "Internal patch error: custom 3P validation replacement changed length."
+        }
+
+        $matchOffset = $match.Index
+        [System.Array]::Copy($patchedAnchor, 0, $content, $matchOffset, $patchedAnchor.Length)
     }
 
     Backup-ModifiedFile $ResourcesPath $asarPath
-    $anchorText = $match.Value
-    $patchedAnchorText = 'const ' + $match.Groups[1].Value + '=' + $newExprText + '||!1,' + $match.Groups[2].Value + '='
-    $anchor = [System.Text.Encoding]::ASCII.GetBytes($anchorText)
-    $patchedAnchor = [System.Text.Encoding]::ASCII.GetBytes($patchedAnchorText)
-    if ($anchor.Length -ne $patchedAnchor.Length) {
-        throw "Internal patch error: custom 3P validation replacement changed length."
-    }
-
-    $matchOffset = $match.Index
-    [System.Array]::Copy($patchedAnchor, 0, $content, $matchOffset, $patchedAnchor.Length)
     [System.Array]::Copy($content, 0, $data, [int]$contentOffset, $content.Length)
 
     $entry.integrity = Get-AsarFileIntegrity $content

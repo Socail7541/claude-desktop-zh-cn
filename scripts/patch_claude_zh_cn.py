@@ -551,6 +551,46 @@ def find_custom3p_validation_toggle(content: bytes, expr: bytes) -> re.Match[byt
     return matches[0] if matches else None
 
 
+def find_custom3p_name_validator(content: bytes, *, patched: bool) -> re.Match[bytes] | None:
+    pattern = re.compile(
+        rb"function ([A-Za-z_$][A-Za-z0-9_$]*)\(([A-Za-z_$][A-Za-z0-9_$]*)\)"
+        rb"\{const ([A-Za-z_$][A-Za-z0-9_$]*)=\2\.toLowerCase\(\);return ([^{};]+)\}"
+    )
+    matches: list[re.Match[bytes]] = []
+    for match in pattern.finditer(content):
+        expr = match.group(4).strip()
+        validation_window = content[max(0, match.start() - 1500) : match.start() + 3000]
+        if (
+            b"deepseek" in validation_window
+            and b"expected a gateway model route referencing an Anthropic model" in validation_window
+        ):
+            if patched and expr == b"!0":
+                matches.append(match)
+            elif (
+                not patched
+                and b".test(" in match.group(4)
+                and b".some(" in match.group(4)
+                and b".includes(" in match.group(4)
+            ):
+                matches.append(match)
+
+    if len(matches) > 1:
+        raise SystemExit("Could not patch custom 3P model validation: multiple matching validators found.")
+    return matches[0] if matches else None
+
+
+def patch_custom3p_name_validator(content: bytes) -> bytes | None:
+    match = find_custom3p_name_validator(content, patched=False)
+    if match is None:
+        return None
+
+    expr = match.group(4)
+    replacement = b"!0" + b" " * (len(expr) - len(b"!0"))
+    if len(expr) != len(replacement):
+        raise SystemExit("Internal patch error: custom 3P validator replacement changed length.")
+    return content[: match.start(4)] + replacement + content[match.end(4) :]
+
+
 def update_electron_asar_integrity(app: Path, header_string: str) -> None:
     info_plist = app / "Contents/Info.plist"
     require_file(info_plist)
@@ -595,24 +635,29 @@ def patch_custom3p_model_validation(app: Path) -> None:
         if patched_match is not None:
             print("Custom 3P model-name validation already patched in app.asar")
             return
-        raise SystemExit(
-            "Could not patch custom 3P model validation. Claude bundle format may have changed."
+        if find_custom3p_name_validator(content, patched=True) is not None:
+            print("Custom 3P model-name validation already patched in app.asar")
+            return
+        patched_content = patch_custom3p_name_validator(content)
+        if patched_content is None:
+            raise SystemExit(
+                "Could not patch custom 3P model validation. Claude bundle format may have changed."
+            )
+    else:
+        anchor = match.group(0)
+        patched = (
+            b"const "
+            + match.group(1)
+            + b"="
+            + replacement
+            + b"||!1,"
+            + match.group(2)
+            + b"="
         )
+        if len(anchor) != len(patched):
+            raise SystemExit("Internal patch error: custom 3P validation replacement changed length.")
+        patched_content = content[: match.start()] + patched + content[match.end() :]
 
-    anchor = match.group(0)
-    patched = (
-        b"const "
-        + match.group(1)
-        + b"="
-        + replacement
-        + b"||!1,"
-        + match.group(2)
-        + b"="
-    )
-    if len(anchor) != len(patched):
-        raise SystemExit("Internal patch error: custom 3P validation replacement changed length.")
-
-    patched_content = content[: match.start()] + patched + content[match.end() :]
     if len(patched_content) != len(content):
         raise SystemExit("Internal patch error: app.asar length changed during custom 3P patch.")
     data[content_offset:content_end] = patched_content
