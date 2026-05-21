@@ -37,8 +37,8 @@ macOS 可双击 `install-mac.command`，Windows 可右键管理员运行 `instal
 
 1. 退出 Claude Desktop。
 2. 下载或克隆本项目。
-3. 双击 `install-mac.command`，选择安装中文补丁或恢复原样 / 卸载补丁。
-4. 安装时选择要安装的语言（1=简体中文，2=繁体中文（中国台湾），3=繁体中文（中国香港））。
+3. 双击 `install-mac.command`，选择安装中文补丁、安全模式安装或恢复原样 / 卸载补丁。
+4. 安装时选择要安装的语言（1=简体中文，2=繁体中文（中国台湾），3=繁体中文（中国香港））。安全模式同样支持三种中文，并跳过 `app.asar` 补丁。
 5. 按提示输入 Mac 登录密码。
 6. Claude 会自动重新打开。
 7. 如果没有自动切换，打开左下角账号菜单，选择 `Language` -> 对应的中文选项。
@@ -53,6 +53,8 @@ sudo /usr/bin/python3 scripts/patch_claude_zh_cn.py --user-home "$HOME" --lang z
 sudo /usr/bin/python3 scripts/patch_claude_zh_cn.py --user-home "$HOME" --lang zh-TW --launch
 # 繁体中文（中国香港）
 sudo /usr/bin/python3 scripts/patch_claude_zh_cn.py --user-home "$HOME" --lang zh-HK --launch
+# 安全模式：选择任意中文语言，并跳过 app.asar 补丁
+sudo /usr/bin/python3 scripts/patch_claude_zh_cn.py --user-home "$HOME" --lang zh-CN --launch --skip-asar-patch
 # 恢复原样 / 卸载补丁
 sudo /usr/bin/python3 scripts/patch_claude_zh_cn.py --user-home "$HOME" --restore --launch
 ```
@@ -62,13 +64,16 @@ sudo /usr/bin/python3 scripts/patch_claude_zh_cn.py --user-home "$HOME" --restor
 1. 退出 Claude Desktop。
 2. 下载或克隆本项目。
 3. 右键 `install-windows.bat`，选择以管理员身份运行。
-4. 在菜单中选择语言：
+4. 先选择安装模式：
+   - `1` 安装中文补丁
+   - `2` 安装中文补丁（安全模式，跳过 `app.asar` 补丁）
+   - `3` 卸载补丁
+5. 安装时再选择语言：
    - `1` 简体中文
    - `2` 繁体中文（中国台湾）
    - `3` 繁体中文（中国香港）
-   - `4` 卸载补丁
-5. 脚本会写入本仓库 `resources` 目录里的中文 JSON，补齐硬编码界面文本，修复 3P gateway 模型名校验，并重启 Claude Desktop。
-6. 如果没有自动切换，打开左下角账号菜单，选择 `Language` -> 对应的中文选项。
+6. 脚本会写入本仓库 `resources` 目录里的中文 JSON，补齐硬编码界面文本；非安全模式会修复 3P gateway 模型名校验，并重启 Claude Desktop。
+7. 如果没有自动切换，打开左下角账号菜单，选择 `Language` -> 对应的中文选项。
 
 也可以在 PowerShell 中运行：
 
@@ -80,6 +85,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_windows.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1 install zh-TW
 # 繁体中文（中国香港）
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1 install zh-HK
+# 安全模式：选择任意中文语言，并跳过 app.asar 补丁
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1 -SkipAsarPatch install zh-CN
 ```
 
 ## 从 GitHub 下载
@@ -116,7 +123,7 @@ chmod +x install-mac.command
 - 恢复 / 卸载时选择同目录下最早的 `Claude.backup-before-zh-CN-*.app` 恢复为 `/Applications/Claude.app`，并删除其他备份。
 - 复制 Claude.app 到临时目录并打补丁。
 - 给前端语言白名单加入当前选择的中文变体。
-- 对 `Contents/Resources/app.asar` 做等长补丁，关闭 3P gateway 启动阶段的 `inferenceModels` Anthropic 名称校验。
+- 对 `Contents/Resources/app.asar` 做等长补丁，关闭 3P gateway 启动阶段的 `inferenceModels` Anthropic 名称校验；安全模式会跳过这一步。
 - 合并当前 Claude 版本的 `en-US.json` 和随包中文翻译：
   当前版本已有中文翻译的 key 会变中文，新版本新增但本包没有的 key 会保留英文，避免应用缺字段。
 - 写入 `~/Library/Application Support/Claude/config.json`，设置 `"locale"` 为所选语言代码（`zh-CN`、`zh-TW` 或 `zh-HK`）。
@@ -147,7 +154,7 @@ Claude.backup-before-zh-CN-20260424-120000.app
 
 如需恢复，可退出 Claude Desktop 后，将当前 `/Applications/Claude.app` 移走，再把备份 app 改名为 `Claude.app`。
 
-Windows 脚本安装时会把被修改的前端 JS bundle、`app.asar` 和 `Claude.exe` 备份到 Claude 安装目录下的 `resources\.zh-cn-backups`。如需恢复，退出 Claude Desktop 后，右键 `install-windows.bat`，选择以管理员身份运行，并在菜单中选择 `4`（卸载补丁）。
+Windows 脚本安装时会把被修改的前端 JS bundle、`app.asar` 和 `Claude.exe` 备份到 Claude 安装目录下的 `resources\.zh-cn-backups`。如需恢复，退出 Claude Desktop 后，右键 `install-windows.bat`，选择以管理员身份运行，并在菜单中选择 `3`（卸载补丁）。
 
 也可以在 PowerShell 中运行：
 

@@ -14,14 +14,17 @@ echo "目录: $DIR"
 echo
 
 ACTION="${CLAUDE_ACTION:-}"
+SKIP_ASAR_PATCH="${CLAUDE_SKIP_ASAR_PATCH:-0}"
 if [ -z "$ACTION" ]; then
   echo "请选择操作："
   echo "  [1] 安装中文补丁"
-  echo "  [2] 恢复原样 / 卸载补丁"
+  echo "  [2] 安装中文补丁（安全模式，跳过 app.asar 补丁,第三方模型需借助ccswitch映射）"
+  echo "  [3] 恢复原样 / 卸载补丁"
   echo
-  read -rp "请输入选项 [1/2，默认 1]: " action_choice
+  read -rp "请输入选项 [1/2/3，默认 1]: " action_choice
   case "${action_choice:-1}" in
-    2) ACTION="restore" ;;
+    2) ACTION="install"; SKIP_ASAR_PATCH="1" ;;
+    3) ACTION="restore" ;;
     *) ACTION="install" ;;
   esac
   echo
@@ -51,8 +54,16 @@ else
   LANG_CODE="$CLAUDE_LANG"
 fi
 
+SKIP_ASAR_ARG=""
+case "$SKIP_ASAR_PATCH" in
+  1|true|TRUE|yes|YES|y|Y) SKIP_ASAR_ARG="--skip-asar-patch" ;;
+esac
+
 if [ "$ACTION" != "restore" ]; then
   echo "选择的语言: $LANG_CODE"
+  if [ -n "$SKIP_ASAR_ARG" ]; then
+    echo "安全模式: 跳过 app.asar 补丁"
+  fi
   echo
 fi
 
@@ -70,7 +81,7 @@ if [ "$(id -u)" -ne 0 ] && [ "$NEEDS_SUDO" -eq 1 ]; then
   if [ "$ACTION" = "restore" ]; then
     sudo "$PYTHON" "$PATCHER" --user-home "$HOME" --restore --launch "$@"
   else
-    sudo "$PYTHON" "$PATCHER" --user-home "$HOME" --lang "$LANG_CODE" --launch "$@"
+    sudo "$PYTHON" "$PATCHER" --user-home "$HOME" --lang "$LANG_CODE" --launch ${SKIP_ASAR_ARG:+"$SKIP_ASAR_ARG"} "$@"
   fi
   STATUS=$?
   echo
@@ -90,7 +101,7 @@ fi
 if [ "$ACTION" = "restore" ]; then
   "$PYTHON" "$PATCHER" --user-home "$USER_HOME" --restore --launch "$@"
 else
-  "$PYTHON" "$PATCHER" --user-home "$USER_HOME" --lang "$LANG_CODE" --launch "$@"
+  "$PYTHON" "$PATCHER" --user-home "$USER_HOME" --lang "$LANG_CODE" --launch ${SKIP_ASAR_ARG:+"$SKIP_ASAR_ARG"} "$@"
 fi
 
 echo

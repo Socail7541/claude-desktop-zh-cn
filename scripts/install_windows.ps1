@@ -23,24 +23,41 @@ $script:CurrentBackupSetPath = $null
 function Read-InteractiveSelection {
     Write-Host "=== Claude Desktop Windows 中文补丁 ==="
     Write-Host ""
-    Write-Host "[1] 安装简体中文"
-    Write-Host "[2] 安装繁体中文（中国台湾）"
-    Write-Host "[3] 安装繁体中文（中国香港）"
-    Write-Host "[4] 安装简体中文（安全模式，跳过 app.asar 补丁）"
-    Write-Host "[5] 恢复原样 / 卸载补丁"
+    Write-Host "[1] 安装中文补丁"
+    Write-Host "[2] 安装中文补丁（安全模式，跳过 app.asar 补丁）"
+    Write-Host "[3] 恢复原样 / 卸载补丁"
+    Write-Host "[Q] 退出"
+    Write-Host ""
+
+    $skipAsarPatchForInstall = $false
+    $actionSelected = $false
+    while (-not $actionSelected) {
+        $actionSelection = (Read-Host "请选择操作 [1/2/3/Q]").Trim()
+        switch -Regex ($actionSelection) {
+            '^[1]$' { $skipAsarPatchForInstall = $false; $actionSelected = $true }
+            '^[2]$' { $skipAsarPatchForInstall = $true; $actionSelected = $true }
+            '^[3]$' { return @{ Action = "uninstall"; Language = "zh-CN"; SkipAsarPatch = $false } }
+            '^[Qq]$' { exit 0 }
+            default { Write-Host "请输入 1、2、3 或 Q。" -ForegroundColor Yellow }
+        }
+    }
+
+    Write-Host ""
+    Write-Host "请选择要安装的语言："
+    Write-Host "[1] 简体中文"
+    Write-Host "[2] 繁体中文（中国台湾）"
+    Write-Host "[3] 繁体中文（中国香港）"
     Write-Host "[Q] 退出"
     Write-Host ""
 
     while ($true) {
-        $selection = (Read-Host "请选择操作 [1/2/3/4/5/Q]").Trim()
-        switch -Regex ($selection) {
-            '^[1]$' { return @{ Action = "install"; Language = "zh-CN"; SkipAsarPatch = $false } }
-            '^[2]$' { return @{ Action = "install"; Language = "zh-TW"; SkipAsarPatch = $false } }
-            '^[3]$' { return @{ Action = "install"; Language = "zh-HK"; SkipAsarPatch = $false } }
-            '^[4]$' { return @{ Action = "install"; Language = "zh-CN"; SkipAsarPatch = $true } }
-            '^[5]$' { return @{ Action = "uninstall"; Language = "zh-CN"; SkipAsarPatch = $false } }
+        $languageSelection = (Read-Host "请选择语言 [1/2/3/Q]").Trim()
+        switch -Regex ($languageSelection) {
+            '^[1]$' { return @{ Action = "install"; Language = "zh-CN"; SkipAsarPatch = $skipAsarPatchForInstall } }
+            '^[2]$' { return @{ Action = "install"; Language = "zh-TW"; SkipAsarPatch = $skipAsarPatchForInstall } }
+            '^[3]$' { return @{ Action = "install"; Language = "zh-HK"; SkipAsarPatch = $skipAsarPatchForInstall } }
             '^[Qq]$' { exit 0 }
-            default { Write-Host "请输入 1、2、3、4、5 或 Q。" -ForegroundColor Yellow }
+            default { Write-Host "请输入 1、2、3 或 Q。" -ForegroundColor Yellow }
         }
     }
 }
